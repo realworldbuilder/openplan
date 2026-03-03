@@ -16,6 +16,8 @@ export class RightPanel {
   onUpdateTask: ((task: TaskData) => void) | null = null;
   onDeleteTask: ((id: string) => void) | null = null;
   onAddSwimlane: ((name: string) => void) | null = null;
+  onDeleteSwimlane: ((id: string) => void) | null = null;
+  onRenameSwimlane: ((id: string, name: string) => void) | null = null;
 
   constructor(container: HTMLElement) {
     this.el = document.createElement('div');
@@ -171,9 +173,15 @@ export class RightPanel {
         this.onUpdateTask?.({ ...existing, ...data });
       } else {
         this.onAddTask?.(data);
+        // Flash feedback
+        submitBtn.textContent = '✓ Added';
+        submitBtn.style.background = '#16a34a';
+        setTimeout(() => { submitBtn.textContent = 'Add Task'; submitBtn.style.background = '#1a1a1a'; }, 1000);
+        // Reset form
         (inputs.name as HTMLInputElement).value = '';
         (inputs.duration as HTMLInputElement).value = '5';
         (inputs.crewSize as HTMLInputElement).value = '1';
+        (inputs.name as HTMLInputElement).focus();
       }
     });
     btnRow.appendChild(submitBtn);
@@ -207,10 +215,37 @@ export class RightPanel {
     for (const sl of swimlanes) {
       const row = document.createElement('div');
       Object.assign(row.style, {
-        padding: '10px 12px', borderBottom: '1px solid #f0f0f0',
-        fontSize: '13px', color: '#333',
+        padding: '8px 12px', borderBottom: '1px solid #f0f0f0',
+        fontSize: '13px', color: '#333', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       });
-      row.textContent = sl.name;
+
+      const nameSpan = document.createElement('span');
+      nameSpan.textContent = sl.name;
+      nameSpan.style.cursor = 'pointer';
+      nameSpan.title = 'Click to rename';
+      nameSpan.addEventListener('click', () => {
+        const newName = prompt('Rename swimlane:', sl.name);
+        if (newName && newName.trim()) {
+          this.onRenameSwimlane?.(sl.id, newName.trim());
+        }
+      });
+
+      const delBtn = document.createElement('button');
+      Object.assign(delBtn.style, {
+        background: 'none', border: 'none', color: '#ccc', cursor: 'pointer',
+        fontSize: '14px', padding: '2px 6px', borderRadius: '4px', transition: 'color 0.15s',
+      });
+      delBtn.textContent = '×';
+      delBtn.addEventListener('mouseenter', () => delBtn.style.color = '#ef4444');
+      delBtn.addEventListener('mouseleave', () => delBtn.style.color = '#ccc');
+      delBtn.addEventListener('click', () => {
+        if (confirm(`Delete "${sl.name}"? Tasks in this swimlane will be orphaned.`)) {
+          this.onDeleteSwimlane?.(sl.id);
+        }
+      });
+
+      row.appendChild(nameSpan);
+      row.appendChild(delBtn);
       wrap.appendChild(row);
     }
 

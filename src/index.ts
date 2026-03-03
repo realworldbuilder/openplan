@@ -205,6 +205,21 @@ rightPanel.onDeleteTask = (id) => {
   renderer.markDirty();
 };
 
+rightPanel.onDeleteSwimlane = (id) => {
+  project.data.swimlanes = project.data.swimlanes.filter(s => s.id !== id);
+  import('./io/Storage').then(s => s.save(project.data));
+  openPanel('swimlanes');
+  renderer.markDirty();
+};
+
+rightPanel.onRenameSwimlane = (id, name) => {
+  const sl = project.data.swimlanes.find(s => s.id === id);
+  if (sl) { sl.name = name; }
+  import('./io/Storage').then(s => s.save(project.data));
+  openPanel('swimlanes');
+  renderer.markDirty();
+};
+
 rightPanel.onAddSwimlane = (name) => {
   const id = name.toLowerCase().replace(/\s+/g, '-') + '-' + Date.now();
   project.addSwimlane({ id, name, order: project.data.swimlanes.length });
