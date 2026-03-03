@@ -130,34 +130,36 @@ export class Renderer {
       const screenPos = this.camera.worldToScreen(0, worldY);
       const sy = screenPos.y;
 
-      if (sy < HEADER_HEIGHT - 30 || sy > this.camera.getHeight() + 30) continue;
+      const dpr = window.devicePixelRatio || 1;
+      if (sy < HEADER_HEIGHT * dpr - 30 || sy > this.camera.getHeight() + 30) continue;
 
-      // Label pill
-      const labelH = 32;
-      const lx = 10;
+      const labelH = 34 * dpr;
+      const labelW = SWIMLANE_LABEL_WIDTH * dpr;
+      const lx = 12 * dpr;
       const ly = sy - labelH / 2;
+      const r = 8 * dpr;
 
-      // Background pill
-      ctx.fillStyle = 'rgba(255,255,255,0.96)';
-      ctx.shadowColor = 'rgba(0,0,0,0.06)';
-      ctx.shadowBlur = 4;
-      ctx.shadowOffsetY = 1;
+      // Background pill with shadow
+      ctx.fillStyle = 'rgba(255,255,255,0.97)';
+      ctx.shadowColor = 'rgba(0,0,0,0.1)';
+      ctx.shadowBlur = 6 * dpr;
+      ctx.shadowOffsetY = 2 * dpr;
       ctx.beginPath();
-      ctx.roundRect(lx, ly, SWIMLANE_LABEL_WIDTH, labelH, 8);
+      ctx.roundRect(lx, ly, labelW, labelH, r);
       ctx.fill();
       ctx.shadowColor = 'transparent';
 
-      ctx.strokeStyle = '#ddd';
-      ctx.lineWidth = 1;
+      ctx.strokeStyle = '#ccc';
+      ctx.lineWidth = dpr;
       ctx.beginPath();
-      ctx.roundRect(lx, ly, SWIMLANE_LABEL_WIDTH, labelH, 8);
+      ctx.roundRect(lx, ly, labelW, labelH, r);
       ctx.stroke();
 
-      ctx.fillStyle = '#1a1a1a';
-      ctx.font = '700 13px -apple-system, BlinkMacSystemFont, sans-serif';
+      ctx.fillStyle = '#000';
+      ctx.font = `800 ${14 * dpr}px -apple-system, BlinkMacSystemFont, sans-serif`;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      ctx.fillText(sl.name, lx + 12, sy);
+      ctx.fillText(sl.name, lx + 14 * dpr, sy);
     }
 
     ctx.restore();
@@ -221,18 +223,27 @@ export class Renderer {
     ctx.rect(x, y, w, TASK_HEIGHT);
     ctx.clip();
 
-    // Task name
+    // Task name — bold white, crisp
     ctx.fillStyle = '#fff';
-    const fontSize = Math.max(11, 14 / this.camera.zoom);
-    ctx.font = `700 ${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ctx.fillText(task.name, x + pad, y + TASK_HEIGHT / 2 - 7 / this.camera.zoom);
+
+    // Scale font size but clamp to stay readable
+    const nameSize = Math.max(12, 15 / this.camera.zoom);
+    ctx.font = `700 ${nameSize}px -apple-system, BlinkMacSystemFont, sans-serif`;
+
+    // Add text shadow for extra readability
+    ctx.shadowColor = 'rgba(0,0,0,0.3)';
+    ctx.shadowBlur = 2 / this.camera.zoom;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 1 / this.camera.zoom;
+    ctx.fillText(task.name, x + pad, y + TASK_HEIGHT / 2 - 8 / this.camera.zoom);
+    ctx.shadowColor = 'transparent';
 
     // Duration + crew subtitle
-    ctx.fillStyle = 'rgba(255,255,255,0.8)';
-    const subFontSize = Math.max(9, 12 / this.camera.zoom);
-    ctx.font = `500 ${subFontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    const subSize = Math.max(10, 12 / this.camera.zoom);
+    ctx.font = `500 ${subSize}px -apple-system, BlinkMacSystemFont, sans-serif`;
     const subtitle = `${task.duration}d` + (task.crewSize > 1 ? ` · ${task.crewSize} crew` : '');
     ctx.fillText(subtitle, x + pad, y + TASK_HEIGHT / 2 + 9 / this.camera.zoom);
 
