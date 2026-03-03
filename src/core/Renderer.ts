@@ -3,13 +3,13 @@ import { TimeAxis } from './TimeAxis';
 import { Project } from '../model/Project';
 import { TaskData } from '../model/types';
 
-const SWIMLANE_PADDING = 12;
-const SWIMLANE_LABEL_WIDTH = 120;
-const TASK_HEIGHT = 36;
-const TASK_GAP = 6;
-const TASK_RADIUS = 6;
-const HEADER_HEIGHT = 50;
-const MIN_SWIMLANE_HEIGHT = 60;
+const SWIMLANE_PADDING = 14;
+const SWIMLANE_LABEL_WIDTH = 140;
+const TASK_HEIGHT = 42;
+const TASK_GAP = 8;
+const TASK_RADIUS = 8;
+const HEADER_HEIGHT = 54;
+const MIN_SWIMLANE_HEIGHT = 70;
 
 export class Renderer {
   private ctx: CanvasRenderingContext2D;
@@ -53,7 +53,7 @@ export class Renderer {
 
     // Clear
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.fillStyle = '#f5f5f5';
+    ctx.fillStyle = '#f8f8f8';
     ctx.fillRect(0, 0, w, h);
 
     // World-space rendering
@@ -109,11 +109,11 @@ export class Renderer {
     const topLeft = this.camera.screenToWorld(0, 0);
     const topRight = this.camera.screenToWorld(this.camera.getWidth(), 0);
 
-    ctx.fillStyle = index % 2 === 0 ? 'rgba(0,0,0,0.018)' : 'rgba(0,0,0,0.0)';
+    ctx.fillStyle = index % 2 === 0 ? 'rgba(0,0,0,0.025)' : 'rgba(0,0,0,0.0)';
     ctx.fillRect(topLeft.x - 5000, y, topRight.x - topLeft.x + 10000, height);
 
     // Separator line
-    ctx.strokeStyle = '#e0e0e0';
+    ctx.strokeStyle = '#d5d5d5';
     ctx.lineWidth = 1 / this.camera.zoom;
     ctx.beginPath();
     ctx.moveTo(topLeft.x - 5000, y + height);
@@ -133,26 +133,31 @@ export class Renderer {
       if (sy < HEADER_HEIGHT - 30 || sy > this.camera.getHeight() + 30) continue;
 
       // Label pill
-      const labelW = SWIMLANE_LABEL_WIDTH;
-      const labelH = 28;
-      const lx = 8;
+      const labelH = 32;
+      const lx = 10;
       const ly = sy - labelH / 2;
 
-      ctx.fillStyle = 'rgba(255,255,255,0.95)';
+      // Background pill
+      ctx.fillStyle = 'rgba(255,255,255,0.96)';
+      ctx.shadowColor = 'rgba(0,0,0,0.06)';
+      ctx.shadowBlur = 4;
+      ctx.shadowOffsetY = 1;
       ctx.beginPath();
-      ctx.roundRect(lx, ly, labelW, labelH, 6);
+      ctx.roundRect(lx, ly, SWIMLANE_LABEL_WIDTH, labelH, 8);
       ctx.fill();
-      ctx.strokeStyle = '#e0e0e0';
+      ctx.shadowColor = 'transparent';
+
+      ctx.strokeStyle = '#ddd';
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.roundRect(lx, ly, labelW, labelH, 6);
+      ctx.roundRect(lx, ly, SWIMLANE_LABEL_WIDTH, labelH, 8);
       ctx.stroke();
 
-      ctx.fillStyle = '#333';
-      ctx.font = '600 12px -apple-system, BlinkMacSystemFont, sans-serif';
+      ctx.fillStyle = '#1a1a1a';
+      ctx.font = '700 13px -apple-system, BlinkMacSystemFont, sans-serif';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      ctx.fillText(sl.name, lx + 10, sy);
+      ctx.fillText(sl.name, lx + 12, sy);
     }
 
     ctx.restore();
@@ -167,9 +172,9 @@ export class Renderer {
 
     // Shadow
     ctx.save();
-    ctx.shadowColor = isSelected ? 'rgba(26,115,232,0.3)' : 'rgba(0,0,0,0.12)';
-    ctx.shadowBlur = (isSelected ? 8 : 4) / this.camera.zoom;
-    ctx.shadowOffsetY = 2 / this.camera.zoom;
+    ctx.shadowColor = isSelected ? 'rgba(26,115,232,0.35)' : 'rgba(0,0,0,0.18)';
+    ctx.shadowBlur = (isSelected ? 10 : 6) / this.camera.zoom;
+    ctx.shadowOffsetY = 3 / this.camera.zoom;
 
     // Bar
     ctx.fillStyle = task.color || '#9E9E9E';
@@ -218,16 +223,18 @@ export class Renderer {
 
     // Task name
     ctx.fillStyle = '#fff';
-    ctx.font = `600 ${12 / this.camera.zoom}px -apple-system, BlinkMacSystemFont, sans-serif`;
+    const fontSize = Math.max(11, 14 / this.camera.zoom);
+    ctx.font = `700 ${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ctx.fillText(task.name, x + pad, y + TASK_HEIGHT / 2 - 6 / this.camera.zoom);
+    ctx.fillText(task.name, x + pad, y + TASK_HEIGHT / 2 - 7 / this.camera.zoom);
 
     // Duration + crew subtitle
-    ctx.fillStyle = 'rgba(255,255,255,0.75)';
-    ctx.font = `${10 / this.camera.zoom}px -apple-system, BlinkMacSystemFont, sans-serif`;
+    ctx.fillStyle = 'rgba(255,255,255,0.8)';
+    const subFontSize = Math.max(9, 12 / this.camera.zoom);
+    ctx.font = `500 ${subFontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;
     const subtitle = `${task.duration}d` + (task.crewSize > 1 ? ` · ${task.crewSize} crew` : '');
-    ctx.fillText(subtitle, x + pad, y + TASK_HEIGHT / 2 + 8 / this.camera.zoom);
+    ctx.fillText(subtitle, x + pad, y + TASK_HEIGHT / 2 + 9 / this.camera.zoom);
 
     ctx.restore();
   }

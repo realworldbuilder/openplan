@@ -1,6 +1,6 @@
 import { Camera } from './Camera';
 
-const HEADER_HEIGHT = 50;
+const HEADER_HEIGHT = 54;
 const PIXELS_PER_DAY = 50;
 const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -69,8 +69,8 @@ export class TimeAxis {
       }
 
       // Grid line
-      ctx.strokeStyle = '#e8e8e8';
-      ctx.lineWidth = 0.5 / camera.zoom;
+      ctx.strokeStyle = '#ddd';
+      ctx.lineWidth = 0.7 / camera.zoom;
       ctx.beginPath();
       ctx.moveTo(x, topLeft.y - 1000);
       ctx.lineTo(x, bottomRight.y + 1000);
@@ -147,10 +147,10 @@ export class TimeAxis {
       if (d.getMonth() !== lastMonth) {
         lastMonth = d.getMonth();
         ctx.fillStyle = '#1a1a1a';
-        ctx.font = '600 12px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.font = '700 13px -apple-system, BlinkMacSystemFont, sans-serif';
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
-        ctx.fillText(`${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`, screenPos.x + 4, 16);
+        ctx.fillText(`${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`, screenPos.x + 4, 18);
       }
 
       // Day number (only if zoom makes them readable)
@@ -166,16 +166,16 @@ export class TimeAxis {
           // Today highlight circle
           ctx.fillStyle = '#e74c3c';
           ctx.beginPath();
-          ctx.arc(screenPos.x + dayWidth / 2, 38, 11, 0, Math.PI * 2);
+          ctx.arc(screenPos.x + dayWidth / 2, 40, 12, 0, Math.PI * 2);
           ctx.fill();
           ctx.fillStyle = '#fff';
-          ctx.font = '600 10px -apple-system, BlinkMacSystemFont, sans-serif';
+          ctx.font = '700 11px -apple-system, BlinkMacSystemFont, sans-serif';
         } else {
-          ctx.fillStyle = isWeekend ? '#bbb' : '#666';
-          ctx.font = '10px -apple-system, BlinkMacSystemFont, sans-serif';
+          ctx.fillStyle = isWeekend ? '#aaa' : '#444';
+          ctx.font = `${dayWidth > 30 ? '500 12' : '11'}px -apple-system, BlinkMacSystemFont, sans-serif`;
         }
 
-        ctx.fillText(String(d.getDate()), screenPos.x + dayWidth / 2, 38);
+        ctx.fillText(String(d.getDate()), screenPos.x + dayWidth / 2, 40);
         ctx.textAlign = 'left';
       }
 
