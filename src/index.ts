@@ -1,7 +1,7 @@
 import { ProjectData, TaskData } from './model/types';
 import { Project } from './model/Project';
 import { getTradeColor } from './model/Trade';
-import { loadAny } from './io/Storage';
+import { loadAny, save } from './io/Storage';
 import { Camera } from './core/Camera';
 import { TimeAxis } from './core/TimeAxis';
 import { Renderer } from './core/Renderer';
@@ -54,10 +54,12 @@ const ctx = canvasEl.getContext('2d')!;
 const dpr = window.devicePixelRatio || 1;
 
 let sidebarOpen = false;
+let rightPanelOpen = false;
 
 function resizeCanvas() {
   const leftOffset = sidebarOpen ? 260 : 0;
-  const w = window.innerWidth - leftOffset;
+  const rightOffset = rightPanelOpen ? 360 : 0;
+  const w = window.innerWidth - leftOffset - rightOffset;
   const h = window.innerHeight - 48;
   canvasEl.width = w * dpr;
   canvasEl.height = h * dpr;
@@ -94,6 +96,15 @@ sidebar.setProjectName(project.data.name);
 const rightPanel = new RightPanel(document.body);
 rightPanel.setSwimlanes(project.data.swimlanes);
 
+// --- Helpers ---
+function openPanel(view: 'add-task' | 'details' | 'swimlanes' | 'trades', data?: any) {
+  rightPanel.setSwimlanes(project.data.swimlanes);
+  rightPanel.open(view, data);
+  rightPanelOpen = true;
+  resizeCanvas();
+  updateFloatingBar();
+}
+
 // --- Visibility logic ---
 function updateFloatingBar() {
   if (!sidebar.getIsOpen() && !rightPanel.getIsOpen()) {
@@ -125,26 +136,20 @@ sidebar.onProjectNameChange = (name) => {
 };
 
 sidebar.onAction = (action) => {
-  if (action === 'add-task') {
-    rightPanel.setSwimlanes(project.data.swimlanes);
-    rightPanel.open('add-task');
-    updateFloatingBar();
-  } else if (action === 'swimlanes') {
-    rightPanel.setSwimlanes(project.data.swimlanes);
-    rightPanel.open('swimlanes');
-    updateFloatingBar();
-  } else if (action === 'trades') {
-    rightPanel.open('trades');
-    updateFloatingBar();
-  } else if (action === 'go-to-today') {
+  if (action === 'add-task') openPanel('add-task');
+  else if (action === 'swimlanes') openPanel('swimlanes');
+  else if (action === 'trades') openPanel('trades');
+  else if (action === 'go-to-today') {
     camera.x = timeAxis.dateToX(new Date());
     camera.y = 180;
     camera.zoom = 1;
     renderer.markDirty();
   } else if (action === 'toggle-deps') {
-    // TODO: toggle dependency lines visibility
+    // TODO
   } else if (action === 'export-json') {
     exportJSON();
+  } else if (action === 'import-json') {
+    importJSON();
   }
 };
 
@@ -152,18 +157,10 @@ sidebar.onClose = () => updateFloatingBar();
 
 // --- Floating bar wiring ---
 floatingBar.onAction = (action) => {
-  if (action === 'add-task') {
-    rightPanel.setSwimlanes(project.data.swimlanes);
-    rightPanel.open('add-task');
-    updateFloatingBar();
-  } else if (action === 'swimlanes') {
-    rightPanel.setSwimlanes(project.data.swimlanes);
-    rightPanel.open('swimlanes');
-    updateFloatingBar();
-  } else if (action === 'trades') {
-    rightPanel.open('trades');
-    updateFloatingBar();
-  } else if (action === 'go-to-today') {
+  if (action === 'add-task') openPanel('add-task');
+  else if (action === 'swimlanes') openPanel('swimlanes');
+  else if (action === 'trades') openPanel('trades');
+  else if (action === 'go-to-today') {
     camera.x = timeAxis.dateToX(new Date());
     camera.y = 180;
     camera.zoom = 1;
@@ -173,6 +170,8 @@ floatingBar.onAction = (action) => {
 
 // --- Right panel wiring ---
 rightPanel.onClose = () => {
+  rightPanelOpen = false;
+  resizeCanvas();
   renderer.selectedTaskId = null;
   renderer.markDirty();
   updateFloatingBar();
@@ -187,6 +186,10 @@ rightPanel.onAddTask = (data) => {
     dependencies: [],
   };
   project.addTask(task);
+  // If task's swimlane doesn't exist, add it
+  if (!project.data.swimlanes.find(s => s.id === task.swimlaneId)) {
+    project.addSwimlane({ id: task.swimlaneId, name: task.swimlaneId, order: project.data.swimlanes.length });
+  }
   renderer.markDirty();
 };
 
@@ -205,8 +208,7 @@ rightPanel.onDeleteTask = (id) => {
 rightPanel.onAddSwimlane = (name) => {
   const id = name.toLowerCase().replace(/\s+/g, '-') + '-' + Date.now();
   project.addSwimlane({ id, name, order: project.data.swimlanes.length });
-  rightPanel.setSwimlanes(project.data.swimlanes);
-  rightPanel.open('swimlanes');
+  openPanel('swimlanes');
   renderer.markDirty();
 };
 
@@ -219,6 +221,43 @@ function exportJSON() {
   a.download = `${project.data.name.replace(/\s+/g, '-').toLowerCase()}.json`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+// --- Import ---
+function importJSON() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json';
+  input.addEventListener('change', () => {
+    const file = input.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(reader.result as string) as ProjectData;
+        if (!data.tasks || !data.swimlanes) throw new Error('Invalid project file');
+        // Replace current project
+        project.data.name = data.name || 'Imported Project';
+        project.data.tasks = data.tasks;
+        project.data.swimlanes = data.swimlanes;
+        project.data.startDate = data.startDate || new Date().toISOString().split('T')[0];
+        project.data.updatedAt = new Date().toISOString();
+        // Update UI
+        toolbar.setProjectName(project.data.name);
+        sidebar.setProjectName(project.data.name);
+        timeAxis.projectStart = new Date(project.data.startDate);
+        camera.x = timeAxis.dateToX(new Date());
+        camera.y = 180;
+        camera.zoom = 1;
+        renderer.markDirty();
+        save(project.data);
+      } catch (e) {
+        alert('Invalid project file');
+      }
+    };
+    reader.readAsText(file);
+  });
+  input.click();
 }
 
 // --- Mouse/Touch Events ---
@@ -278,9 +317,7 @@ canvasEl.addEventListener('mouseup', () => {
     } else {
       // Click — open details
       renderer.selectedTaskId = draggingTask.id;
-      rightPanel.setSwimlanes(project.data.swimlanes);
-      rightPanel.open('details', draggingTask);
-      updateFloatingBar();
+      openPanel('details', draggingTask);
       renderer.markDirty();
     }
     draggingTask = null;
@@ -313,10 +350,7 @@ canvasEl.addEventListener('dblclick', (e) => {
   const task = renderer.hitTestTask(world.x, world.y);
   if (task) return;
 
-  // Open add-task panel
-  rightPanel.setSwimlanes(project.data.swimlanes);
-  rightPanel.open('add-task');
-  updateFloatingBar();
+  openPanel('add-task');
 });
 
 // Touch events

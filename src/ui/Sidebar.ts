@@ -86,7 +86,8 @@ export class Sidebar {
 
     // Export section
     const exportSection = this.makeSection();
-    exportSection.appendChild(this.makeSectionTitle('Export'));
+    exportSection.appendChild(this.makeSectionTitle('Import / Export'));
+    exportSection.appendChild(this.makeActionBtn('📥 Import JSON', 'import-json'));
     exportSection.appendChild(this.makeActionBtn('💾 Export JSON', 'export-json'));
     this.el.appendChild(exportSection);
 
