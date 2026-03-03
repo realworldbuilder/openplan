@@ -3,12 +3,13 @@ import { TimeAxis } from './TimeAxis';
 import { Project } from '../model/Project';
 import { TaskData } from '../model/types';
 
-const SWIMLANE_HEIGHT = 120;
-const SWIMLANE_LABEL_WIDTH = 140;
-const TASK_HEIGHT = 32;
-const TASK_GAP = 8;
+const SWIMLANE_PADDING = 12;
+const SWIMLANE_LABEL_WIDTH = 120;
+const TASK_HEIGHT = 36;
+const TASK_GAP = 6;
 const TASK_RADIUS = 6;
-const HEADER_HEIGHT = 40;
+const HEADER_HEIGHT = 50;
+const MIN_SWIMLANE_HEIGHT = 60;
 
 export class Renderer {
   private ctx: CanvasRenderingContext2D;
@@ -17,6 +18,7 @@ export class Renderer {
   private project: Project;
   private dirty = true;
   selectedTaskId: string | null = null;
+  private _swimlaneLayout: { id: string; name: string; y: number; height: number }[] = [];
 
   constructor(
     ctx: CanvasRenderingContext2D,
@@ -60,18 +62,35 @@ export class Renderer {
     // Grid
     this.timeAxis.renderGrid(ctx, this.camera, h);
 
-    // Swimlanes
+    // Compute swimlane layout (dynamic height based on task count)
     const swimlanes = [...this.project.data.swimlanes].sort((a, b) => a.order - b.order);
-    const baseY = 20;
+    const baseY = 10;
+    const swimlaneLayout: { id: string; name: string; y: number; height: number }[] = [];
+    let currentY = baseY;
 
-    swimlanes.forEach((sw, i) => {
-      const y = baseY + i * SWIMLANE_HEIGHT;
-      this.renderSwimlaneBackground(ctx, y, sw.name, i);
+    for (const sw of swimlanes) {
       const tasks = this.project.getTasksInSwimlane(sw.id);
-      tasks.forEach((task, ti) => {
-        this.renderTask(ctx, task, y + 10 + ti * (TASK_HEIGHT + TASK_GAP));
-      });
+      const taskCount = Math.max(1, tasks.length);
+      const height = Math.max(MIN_SWIMLANE_HEIGHT, SWIMLANE_PADDING * 2 + taskCount * (TASK_HEIGHT + TASK_GAP) - TASK_GAP);
+      swimlaneLayout.push({ id: sw.id, name: sw.name, y: currentY, height });
+      currentY += height;
+    }
+
+    // Store for hit testing
+    this._swimlaneLayout = swimlaneLayout;
+
+    // Render swimlane backgrounds
+    swimlaneLayout.forEach((sl, i) => {
+      this.renderSwimlaneBackground(ctx, sl.y, sl.name, i, sl.height);
     });
+
+    // Render tasks
+    for (const sl of swimlaneLayout) {
+      const tasks = this.project.getTasksInSwimlane(sl.id);
+      tasks.forEach((task, ti) => {
+        this.renderTask(ctx, task, sl.y + SWIMLANE_PADDING + ti * (TASK_HEIGHT + TASK_GAP));
+      });
+    }
 
     // Dependencies
     this.renderDependencies(ctx);
@@ -83,48 +102,58 @@ export class Renderer {
     this.timeAxis.renderHeader(ctx, this.camera);
 
     // Swimlane labels (screen-space)
-    this.renderSwimlaneLabels(ctx, swimlanes, baseY);
+    this.renderSwimlaneLabelsNew(ctx, swimlaneLayout);
   }
 
-  private renderSwimlaneBackground(ctx: CanvasRenderingContext2D, y: number, _name: string, index: number) {
+  private renderSwimlaneBackground(ctx: CanvasRenderingContext2D, y: number, _name: string, index: number, height: number) {
     const topLeft = this.camera.screenToWorld(0, 0);
     const topRight = this.camera.screenToWorld(this.camera.getWidth(), 0);
 
-    ctx.fillStyle = index % 2 === 0 ? 'rgba(0,0,0,0.015)' : 'rgba(0,0,0,0.0)';
-    ctx.fillRect(topLeft.x - 2000, y, topRight.x - topLeft.x + 4000, SWIMLANE_HEIGHT);
+    ctx.fillStyle = index % 2 === 0 ? 'rgba(0,0,0,0.018)' : 'rgba(0,0,0,0.0)';
+    ctx.fillRect(topLeft.x - 5000, y, topRight.x - topLeft.x + 10000, height);
 
     // Separator line
-    ctx.strokeStyle = '#e8e8e8';
+    ctx.strokeStyle = '#e0e0e0';
     ctx.lineWidth = 1 / this.camera.zoom;
     ctx.beginPath();
-    ctx.moveTo(topLeft.x - 2000, y + SWIMLANE_HEIGHT);
-    ctx.lineTo(topRight.x + 2000, y + SWIMLANE_HEIGHT);
+    ctx.moveTo(topLeft.x - 5000, y + height);
+    ctx.lineTo(topRight.x + 5000, y + height);
     ctx.stroke();
   }
 
-  private renderSwimlaneLabels(ctx: CanvasRenderingContext2D, swimlanes: typeof this.project.data.swimlanes, baseY: number) {
+  private renderSwimlaneLabelsNew(ctx: CanvasRenderingContext2D, layout: { id: string; name: string; y: number; height: number }[]) {
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-    swimlanes.forEach((sw, i) => {
-      const worldY = baseY + i * SWIMLANE_HEIGHT + SWIMLANE_HEIGHT / 2;
+    for (const sl of layout) {
+      const worldY = sl.y + sl.height / 2;
       const screenPos = this.camera.worldToScreen(0, worldY);
       const sy = screenPos.y;
 
-      if (sy < HEADER_HEIGHT - 20 || sy > this.camera.getHeight() + 20) return;
+      if (sy < HEADER_HEIGHT - 30 || sy > this.camera.getHeight() + 30) continue;
 
-      // Label background
-      ctx.fillStyle = 'rgba(255,255,255,0.92)';
-      ctx.fillRect(0, sy - 16, SWIMLANE_LABEL_WIDTH, 32);
+      // Label pill
+      const labelW = SWIMLANE_LABEL_WIDTH;
+      const labelH = 28;
+      const lx = 8;
+      const ly = sy - labelH / 2;
+
+      ctx.fillStyle = 'rgba(255,255,255,0.95)';
+      ctx.beginPath();
+      ctx.roundRect(lx, ly, labelW, labelH, 6);
+      ctx.fill();
       ctx.strokeStyle = '#e0e0e0';
       ctx.lineWidth = 1;
-      ctx.strokeRect(0, sy - 16, SWIMLANE_LABEL_WIDTH, 32);
+      ctx.beginPath();
+      ctx.roundRect(lx, ly, labelW, labelH, 6);
+      ctx.stroke();
 
       ctx.fillStyle = '#333';
-      ctx.font = 'bold 12px -apple-system, BlinkMacSystemFont, sans-serif';
+      ctx.font = '600 12px -apple-system, BlinkMacSystemFont, sans-serif';
       ctx.textAlign = 'left';
-      ctx.fillText(sw.name, 12, sy + 4);
-    });
+      ctx.textBaseline = 'middle';
+      ctx.fillText(sl.name, lx + 10, sy);
+    }
 
     ctx.restore();
   }
@@ -132,57 +161,75 @@ export class Renderer {
   private renderTask(ctx: CanvasRenderingContext2D, task: TaskData, y: number) {
     const startDate = new Date(task.startDate);
     const x = this.timeAxis.dateToX(startDate);
-    const w = this.timeAxis.getTaskWidth(startDate, task.duration);
-
+    const w = Math.max(this.timeAxis.getTaskWidth(startDate, task.duration), 60 / this.camera.zoom);
+    const r = TASK_RADIUS / this.camera.zoom;
     const isSelected = task.id === this.selectedTaskId;
 
     // Shadow
     ctx.save();
-    ctx.shadowColor = 'rgba(0,0,0,0.1)';
-    ctx.shadowBlur = 4 / this.camera.zoom;
+    ctx.shadowColor = isSelected ? 'rgba(26,115,232,0.3)' : 'rgba(0,0,0,0.12)';
+    ctx.shadowBlur = (isSelected ? 8 : 4) / this.camera.zoom;
     ctx.shadowOffsetY = 2 / this.camera.zoom;
 
     // Bar
-    ctx.fillStyle = task.color;
-    this.roundRect(ctx, x, y, w, TASK_HEIGHT, TASK_RADIUS / this.camera.zoom);
+    ctx.fillStyle = task.color || '#9E9E9E';
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, TASK_HEIGHT, r);
     ctx.fill();
     ctx.restore();
 
-    // Progress
-    if (task.progress > 0) {
+    // Subtle border
+    ctx.strokeStyle = 'rgba(0,0,0,0.08)';
+    ctx.lineWidth = 1 / this.camera.zoom;
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, TASK_HEIGHT, r);
+    ctx.stroke();
+
+    // Progress overlay
+    if (task.progress > 0 && task.progress < 100) {
       ctx.save();
-      ctx.globalAlpha = 0.3;
+      ctx.globalAlpha = 0.2;
       ctx.fillStyle = '#000';
       const pw = w * (task.progress / 100);
-      this.roundRect(ctx, x, y, pw, TASK_HEIGHT, TASK_RADIUS / this.camera.zoom);
+      ctx.beginPath();
+      ctx.roundRect(x, y, pw, TASK_HEIGHT, r);
       ctx.fill();
-      ctx.globalAlpha = 1;
       ctx.restore();
     }
 
     // Selection outline
     if (isSelected) {
       ctx.strokeStyle = '#1a73e8';
-      ctx.lineWidth = 2 / this.camera.zoom;
-      this.roundRect(ctx, x - 1, y - 1, w + 2, TASK_HEIGHT + 2, TASK_RADIUS / this.camera.zoom);
+      ctx.lineWidth = 2.5 / this.camera.zoom;
+      ctx.beginPath();
+      ctx.roundRect(x - 1.5 / this.camera.zoom, y - 1.5 / this.camera.zoom, w + 3 / this.camera.zoom, TASK_HEIGHT + 3 / this.camera.zoom, r);
       ctx.stroke();
     }
 
-    // Text
+    // Text — clip to bar
+    const pad = 10 / this.camera.zoom;
+    const textW = w - pad * 2;
+    if (textW < 20 / this.camera.zoom) return;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x, y, w, TASK_HEIGHT);
+    ctx.clip();
+
+    // Task name
     ctx.fillStyle = '#fff';
-    ctx.font = `bold ${11 / this.camera.zoom}px -apple-system, BlinkMacSystemFont, sans-serif`;
+    ctx.font = `600 ${12 / this.camera.zoom}px -apple-system, BlinkMacSystemFont, sans-serif`;
     ctx.textAlign = 'left';
-    const textX = x + 8 / this.camera.zoom;
-    const textY = y + TASK_HEIGHT / 2 + 4 / this.camera.zoom;
-    const maxTextW = w - 16 / this.camera.zoom;
-    if (maxTextW > 10 / this.camera.zoom) {
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(x, y, w, TASK_HEIGHT);
-      ctx.clip();
-      ctx.fillText(task.name, textX, textY);
-      ctx.restore();
-    }
+    ctx.textBaseline = 'middle';
+    ctx.fillText(task.name, x + pad, y + TASK_HEIGHT / 2 - 6 / this.camera.zoom);
+
+    // Duration + crew subtitle
+    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    ctx.font = `${10 / this.camera.zoom}px -apple-system, BlinkMacSystemFont, sans-serif`;
+    const subtitle = `${task.duration}d` + (task.crewSize > 1 ? ` · ${task.crewSize} crew` : '');
+    ctx.fillText(subtitle, x + pad, y + TASK_HEIGHT / 2 + 8 / this.camera.zoom);
+
+    ctx.restore();
   }
 
   private renderDependencies(ctx: CanvasRenderingContext2D) {
@@ -230,25 +277,23 @@ export class Renderer {
   }
 
   private getTaskScreenY(task: TaskData): number | null {
-    const swimlanes = [...this.project.data.swimlanes].sort((a, b) => a.order - b.order);
-    const swIndex = swimlanes.findIndex(s => s.id === task.swimlaneId);
-    if (swIndex === -1) return null;
+    const sl = this._swimlaneLayout.find(s => s.id === task.swimlaneId);
+    if (!sl) return null;
     const tasks = this.project.getTasksInSwimlane(task.swimlaneId);
     const tIndex = tasks.findIndex(t => t.id === task.id);
     if (tIndex === -1) return null;
-    return 20 + swIndex * SWIMLANE_HEIGHT + 10 + tIndex * (TASK_HEIGHT + TASK_GAP);
+    return sl.y + SWIMLANE_PADDING + tIndex * (TASK_HEIGHT + TASK_GAP);
   }
 
   hitTestTask(worldX: number, worldY: number): TaskData | null {
-    const swimlanes = [...this.project.data.swimlanes].sort((a, b) => a.order - b.order);
-    for (let si = 0; si < swimlanes.length; si++) {
-      const tasks = this.project.getTasksInSwimlane(swimlanes[si].id);
+    for (const sl of this._swimlaneLayout) {
+      const tasks = this.project.getTasksInSwimlane(sl.id);
       for (let ti = 0; ti < tasks.length; ti++) {
         const task = tasks[ti];
-        const y = 20 + si * SWIMLANE_HEIGHT + 10 + ti * (TASK_HEIGHT + TASK_GAP);
+        const y = sl.y + SWIMLANE_PADDING + ti * (TASK_HEIGHT + TASK_GAP);
         const startDate = new Date(task.startDate);
         const x = this.timeAxis.dateToX(startDate);
-        const w = this.timeAxis.getTaskWidth(startDate, task.duration);
+        const w = Math.max(this.timeAxis.getTaskWidth(startDate, task.duration), 60);
         if (worldX >= x && worldX <= x + w && worldY >= y && worldY <= y + TASK_HEIGHT) {
           return task;
         }
@@ -256,6 +301,8 @@ export class Renderer {
     }
     return null;
   }
+
+  get swimlaneLayout() { return this._swimlaneLayout; }
 
   private roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
     ctx.beginPath();

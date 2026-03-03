@@ -185,12 +185,12 @@ canvasEl.addEventListener('dblclick', (e) => {
   const dateAtClick = timeAxis.xToDate(world.x);
   const dateStr = dateAtClick.toISOString().split('T')[0];
 
-  // Figure out which swimlane
-  const swimlanes = [...project.data.swimlanes].sort((a, b) => a.order - b.order);
-  const baseY = 20;
-  const SWIMLANE_HEIGHT = 120;
-  const slIdx = Math.floor((world.y - baseY) / SWIMLANE_HEIGHT);
-  const sl = swimlanes[Math.max(0, Math.min(slIdx, swimlanes.length - 1))];
+  // Figure out which swimlane from renderer layout
+  const layout = renderer.swimlaneLayout;
+  let sl = layout[0];
+  for (const s of layout) {
+    if (world.y >= s.y && world.y < s.y + s.height) { sl = s; break; }
+  }
   taskDialog.open(dateStr, sl?.id);
 });
 

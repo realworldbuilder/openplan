@@ -1,6 +1,6 @@
 import { Camera } from './Camera';
 
-const HEADER_HEIGHT = 40;
+const HEADER_HEIGHT = 50;
 const PIXELS_PER_DAY = 50;
 const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -111,6 +111,12 @@ export class TimeAxis {
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, w, HEADER_HEIGHT);
 
+    // Subtle shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.04)';
+    ctx.fillRect(0, HEADER_HEIGHT, w, 1);
+    ctx.fillStyle = 'rgba(0,0,0,0.02)';
+    ctx.fillRect(0, HEADER_HEIGHT + 1, w, 1);
+
     // Bottom border
     ctx.strokeStyle = '#e0e0e0';
     ctx.lineWidth = 1;
@@ -122,13 +128,15 @@ export class TimeAxis {
     // Compute visible dates
     const topLeft = camera.screenToWorld(0, 0);
     const topRight = camera.screenToWorld(w, 0);
-    const startDate = this.xToDate(topLeft.x - PIXELS_PER_DAY);
-    const endDate = this.xToDate(topRight.x + PIXELS_PER_DAY);
+    const startDate = this.xToDate(topLeft.x - PIXELS_PER_DAY * 2);
+    const endDate = this.xToDate(topRight.x + PIXELS_PER_DAY * 2);
 
     const d = new Date(startDate);
     d.setHours(0, 0, 0, 0);
 
     let lastMonth = -1;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
     while (d <= endDate) {
       const x = this.dateToX(d);
@@ -138,18 +146,36 @@ export class TimeAxis {
       // Month label (on first day of month or first visible)
       if (d.getMonth() !== lastMonth) {
         lastMonth = d.getMonth();
-        ctx.fillStyle = '#333';
-        ctx.font = 'bold 11px -apple-system, BlinkMacSystemFont, sans-serif';
-        ctx.fillText(`${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`, screenPos.x + 4, 14);
+        ctx.fillStyle = '#1a1a1a';
+        ctx.font = '600 12px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`, screenPos.x + 4, 16);
       }
 
       // Day number (only if zoom makes them readable)
-      if (dayWidth > 18) {
+      if (dayWidth > 20) {
         const dow = d.getDay();
-        ctx.fillStyle = (dow === 0 || dow === 6) ? '#bbb' : '#666';
-        ctx.font = '10px -apple-system, BlinkMacSystemFont, sans-serif';
+        const isToday = d.getTime() === today.getTime();
+        const isWeekend = dow === 0 || dow === 6;
+
         ctx.textAlign = 'center';
-        ctx.fillText(String(d.getDate()), screenPos.x + dayWidth / 2, 32);
+        ctx.textBaseline = 'middle';
+
+        if (isToday) {
+          // Today highlight circle
+          ctx.fillStyle = '#e74c3c';
+          ctx.beginPath();
+          ctx.arc(screenPos.x + dayWidth / 2, 38, 11, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#fff';
+          ctx.font = '600 10px -apple-system, BlinkMacSystemFont, sans-serif';
+        } else {
+          ctx.fillStyle = isWeekend ? '#bbb' : '#666';
+          ctx.font = '10px -apple-system, BlinkMacSystemFont, sans-serif';
+        }
+
+        ctx.fillText(String(d.getDate()), screenPos.x + dayWidth / 2, 38);
         ctx.textAlign = 'left';
       }
 
