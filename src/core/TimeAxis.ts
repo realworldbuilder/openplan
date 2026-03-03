@@ -1,0 +1,161 @@
+import { Camera } from './Camera';
+
+const HEADER_HEIGHT = 40;
+const PIXELS_PER_DAY = 50;
+const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+export class TimeAxis {
+  projectStart: Date;
+
+  constructor(projectStart: Date) {
+    this.projectStart = new Date(projectStart);
+    this.projectStart.setHours(0, 0, 0, 0);
+  }
+
+  get headerHeight() { return HEADER_HEIGHT; }
+  get pixelsPerDay() { return PIXELS_PER_DAY; }
+
+  dateToX(date: Date): number {
+    const ms = date.getTime() - this.projectStart.getTime();
+    return (ms / 86400000) * PIXELS_PER_DAY;
+  }
+
+  xToDate(x: number): Date {
+    const days = x / PIXELS_PER_DAY;
+    const d = new Date(this.projectStart);
+    d.setDate(d.getDate() + Math.floor(days));
+    return d;
+  }
+
+  businessDaysToPixels(days: number): number {
+    return days * (7 / 5) * PIXELS_PER_DAY;
+  }
+
+  /** Get pixel width for a task starting at startDate with N business days */
+  getTaskWidth(startDate: Date, businessDays: number): number {
+    const end = this.addBusinessDays(startDate, businessDays);
+    return this.dateToX(end) - this.dateToX(startDate);
+  }
+
+  addBusinessDays(start: Date, days: number): Date {
+    const d = new Date(start);
+    let added = 0;
+    while (added < days) {
+      d.setDate(d.getDate() + 1);
+      const dow = d.getDay();
+      if (dow !== 0 && dow !== 6) added++;
+    }
+    return d;
+  }
+
+  renderGrid(ctx: CanvasRenderingContext2D, camera: Camera, canvasHeight: number) {
+    const topLeft = camera.screenToWorld(0, 0);
+    const bottomRight = camera.screenToWorld(camera.getWidth(), canvasHeight);
+
+    const startDate = this.xToDate(topLeft.x - PIXELS_PER_DAY);
+    const endDate = this.xToDate(bottomRight.x + PIXELS_PER_DAY);
+
+    const d = new Date(startDate);
+    d.setHours(0, 0, 0, 0);
+
+    while (d <= endDate) {
+      const x = this.dateToX(d);
+      const dow = d.getDay();
+
+      // Weekend shading
+      if (dow === 0 || dow === 6) {
+        ctx.fillStyle = 'rgba(0,0,0,0.02)';
+        ctx.fillRect(x, topLeft.y - 1000, PIXELS_PER_DAY, bottomRight.y - topLeft.y + 2000);
+      }
+
+      // Grid line
+      ctx.strokeStyle = '#e8e8e8';
+      ctx.lineWidth = 0.5 / camera.zoom;
+      ctx.beginPath();
+      ctx.moveTo(x, topLeft.y - 1000);
+      ctx.lineTo(x, bottomRight.y + 1000);
+      ctx.stroke();
+
+      d.setDate(d.getDate() + 1);
+    }
+  }
+
+  renderTodayLine(ctx: CanvasRenderingContext2D, camera: Camera, canvasHeight: number) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const x = this.dateToX(today);
+
+    const topLeft = camera.screenToWorld(0, 0);
+    const bottomRight = camera.screenToWorld(0, canvasHeight);
+
+    ctx.save();
+    ctx.strokeStyle = '#e74c3c';
+    ctx.lineWidth = 2 / camera.zoom;
+    ctx.setLineDash([6 / camera.zoom, 4 / camera.zoom]);
+    ctx.beginPath();
+    ctx.moveTo(x, topLeft.y - 1000);
+    ctx.lineTo(x, bottomRight.y + 1000);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+
+  renderHeader(ctx: CanvasRenderingContext2D, camera: Camera) {
+    // Reset transform for fixed header
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+    const w = camera.getWidth();
+
+    // Background
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, w, HEADER_HEIGHT);
+
+    // Bottom border
+    ctx.strokeStyle = '#e0e0e0';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, HEADER_HEIGHT);
+    ctx.lineTo(w, HEADER_HEIGHT);
+    ctx.stroke();
+
+    // Compute visible dates
+    const topLeft = camera.screenToWorld(0, 0);
+    const topRight = camera.screenToWorld(w, 0);
+    const startDate = this.xToDate(topLeft.x - PIXELS_PER_DAY);
+    const endDate = this.xToDate(topRight.x + PIXELS_PER_DAY);
+
+    const d = new Date(startDate);
+    d.setHours(0, 0, 0, 0);
+
+    let lastMonth = -1;
+
+    while (d <= endDate) {
+      const x = this.dateToX(d);
+      const screenPos = camera.worldToScreen(x, 0);
+      const dayWidth = PIXELS_PER_DAY * camera.zoom;
+
+      // Month label (on first day of month or first visible)
+      if (d.getMonth() !== lastMonth) {
+        lastMonth = d.getMonth();
+        ctx.fillStyle = '#333';
+        ctx.font = 'bold 11px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.fillText(`${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`, screenPos.x + 4, 14);
+      }
+
+      // Day number (only if zoom makes them readable)
+      if (dayWidth > 18) {
+        const dow = d.getDay();
+        ctx.fillStyle = (dow === 0 || dow === 6) ? '#bbb' : '#666';
+        ctx.font = '10px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(String(d.getDate()), screenPos.x + dayWidth / 2, 32);
+        ctx.textAlign = 'left';
+      }
+
+      d.setDate(d.getDate() + 1);
+    }
+
+    ctx.restore();
+  }
+}
