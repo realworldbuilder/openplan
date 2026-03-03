@@ -8,7 +8,7 @@ import { Renderer } from './core/Renderer';
 import { Toolbar } from './ui/Toolbar';
 import { FloatingBar } from './ui/FloatingBar';
 import { Sidebar } from './ui/Sidebar';
-import { TaskDialog } from './ui/TaskDialog';
+import { RightPanel } from './ui/RightPanel';
 import { v4 as uuid } from 'uuid';
 
 // --- Default project with sample data ---
@@ -20,7 +20,7 @@ function createDefaultProject(): ProjectData {
   return {
     id: uuid(),
     name: 'Commercial Buildout',
-    startDate: fmt(addDays(today, -7)), // start a week ago so we see some history
+    startDate: fmt(addDays(today, -7)),
     tasks: [
       { id: uuid(), name: 'Mobilization', startDate: fmt(addDays(today, -5)), duration: 5, tradeId: 'general', swimlaneId: 'site-prep', crewSize: 8, color: '#9E9E9E', progress: 100, dependencies: [] },
       { id: uuid(), name: 'Site Clearing & Grading', startDate: fmt(addDays(today, 0)), duration: 15, tradeId: 'sitework', swimlaneId: 'site-prep', crewSize: 12, color: '#8D6E63', progress: 30, dependencies: [] },
@@ -53,11 +53,17 @@ const canvasEl = document.getElementById('canvas') as HTMLCanvasElement;
 const ctx = canvasEl.getContext('2d')!;
 const dpr = window.devicePixelRatio || 1;
 
+let sidebarOpen = false;
+
 function resizeCanvas() {
-  canvasEl.width = window.innerWidth * dpr;
-  canvasEl.height = (window.innerHeight - 48) * dpr;
-  canvasEl.style.width = window.innerWidth + 'px';
-  canvasEl.style.height = (window.innerHeight - 48) + 'px';
+  const leftOffset = sidebarOpen ? 260 : 0;
+  const w = window.innerWidth - leftOffset;
+  const h = window.innerHeight - 48;
+  canvasEl.width = w * dpr;
+  canvasEl.height = h * dpr;
+  canvasEl.style.width = w + 'px';
+  canvasEl.style.height = h + 'px';
+  canvasEl.style.left = leftOffset + 'px';
   camera.resize(canvasEl.width, canvasEl.height);
   renderer.markDirty();
 }
@@ -69,7 +75,7 @@ const renderer = new Renderer(ctx, camera, timeAxis, project);
 // Center camera on today
 const todayX = timeAxis.dateToX(new Date());
 camera.x = todayX;
-camera.y = 180; // center vertically-ish on the swimlanes
+camera.y = 180;
 
 resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
@@ -77,19 +83,143 @@ window.addEventListener('resize', resizeCanvas);
 // Start render loop
 renderer.start();
 
-// --- UI ---
-const existingToolbar = document.getElementById('toolbar');
-existingToolbar?.remove();
-
+// --- UI Components ---
 const toolbar = new Toolbar(document.body);
 toolbar.setProjectName(project.data.name);
 
 const floatingBar = new FloatingBar(document.body);
 const sidebar = new Sidebar(document.body);
-sidebar.setProject(project.data);
+sidebar.setProjectName(project.data.name);
 
-const taskDialog = new TaskDialog(document.body);
-taskDialog.setSwimlanes(project.data.swimlanes);
+const rightPanel = new RightPanel(document.body);
+rightPanel.setSwimlanes(project.data.swimlanes);
+
+// --- Visibility logic ---
+function updateFloatingBar() {
+  if (!sidebar.getIsOpen() && !rightPanel.getIsOpen()) {
+    floatingBar.show();
+  } else {
+    floatingBar.hide();
+  }
+}
+
+// --- Toolbar wiring ---
+toolbar.onToggleSidebar(() => {
+  sidebar.toggle();
+  sidebarOpen = sidebar.getIsOpen();
+  resizeCanvas();
+  updateFloatingBar();
+});
+
+toolbar.onProjectNameChange((name) => {
+  project.data.name = name;
+  project.data.updatedAt = new Date().toISOString();
+  sidebar.setProjectName(name);
+});
+
+// --- Sidebar wiring ---
+sidebar.onProjectNameChange = (name) => {
+  project.data.name = name;
+  project.data.updatedAt = new Date().toISOString();
+  toolbar.setProjectName(name);
+};
+
+sidebar.onAction = (action) => {
+  if (action === 'add-task') {
+    rightPanel.setSwimlanes(project.data.swimlanes);
+    rightPanel.open('add-task');
+    updateFloatingBar();
+  } else if (action === 'swimlanes') {
+    rightPanel.setSwimlanes(project.data.swimlanes);
+    rightPanel.open('swimlanes');
+    updateFloatingBar();
+  } else if (action === 'trades') {
+    rightPanel.open('trades');
+    updateFloatingBar();
+  } else if (action === 'go-to-today') {
+    camera.x = timeAxis.dateToX(new Date());
+    camera.y = 180;
+    camera.zoom = 1;
+    renderer.markDirty();
+  } else if (action === 'toggle-deps') {
+    // TODO: toggle dependency lines visibility
+  } else if (action === 'export-json') {
+    exportJSON();
+  }
+};
+
+sidebar.onClose = () => updateFloatingBar();
+
+// --- Floating bar wiring ---
+floatingBar.onAction = (action) => {
+  if (action === 'add-task') {
+    rightPanel.setSwimlanes(project.data.swimlanes);
+    rightPanel.open('add-task');
+    updateFloatingBar();
+  } else if (action === 'swimlanes') {
+    rightPanel.setSwimlanes(project.data.swimlanes);
+    rightPanel.open('swimlanes');
+    updateFloatingBar();
+  } else if (action === 'trades') {
+    rightPanel.open('trades');
+    updateFloatingBar();
+  } else if (action === 'go-to-today') {
+    camera.x = timeAxis.dateToX(new Date());
+    camera.y = 180;
+    camera.zoom = 1;
+    renderer.markDirty();
+  }
+};
+
+// --- Right panel wiring ---
+rightPanel.onClose = () => {
+  renderer.selectedTaskId = null;
+  renderer.markDirty();
+  updateFloatingBar();
+};
+
+rightPanel.onAddTask = (data) => {
+  const task: TaskData = {
+    ...data,
+    id: uuid(),
+    color: getTradeColor(data.tradeId),
+    progress: 0,
+    dependencies: [],
+  };
+  project.addTask(task);
+  renderer.markDirty();
+};
+
+rightPanel.onUpdateTask = (task) => {
+  task.color = getTradeColor(task.tradeId);
+  project.updateTask(task.id, task);
+  renderer.markDirty();
+};
+
+rightPanel.onDeleteTask = (id) => {
+  project.removeTask(id);
+  renderer.selectedTaskId = null;
+  renderer.markDirty();
+};
+
+rightPanel.onAddSwimlane = (name) => {
+  const id = name.toLowerCase().replace(/\s+/g, '-') + '-' + Date.now();
+  project.addSwimlane({ id, name, order: project.data.swimlanes.length });
+  rightPanel.setSwimlanes(project.data.swimlanes);
+  rightPanel.open('swimlanes');
+  renderer.markDirty();
+};
+
+// --- Export ---
+function exportJSON() {
+  const blob = new Blob([JSON.stringify(project.data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${project.data.name.replace(/\s+/g, '-').toLowerCase()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 // --- Mouse/Touch Events ---
 let isPanning = false;
@@ -146,10 +276,11 @@ canvasEl.addEventListener('mouseup', () => {
     if (draggingTask.startDate !== dragOrigDate) {
       project.updateTask(draggingTask.id, { startDate: draggingTask.startDate });
     } else {
-      // Click — select task
+      // Click — open details
       renderer.selectedTaskId = draggingTask.id;
-      sidebar.open('details', draggingTask);
-      floatingBar.hide();
+      rightPanel.setSwimlanes(project.data.swimlanes);
+      rightPanel.open('details', draggingTask);
+      updateFloatingBar();
       renderer.markDirty();
     }
     draggingTask = null;
@@ -182,16 +313,10 @@ canvasEl.addEventListener('dblclick', (e) => {
   const task = renderer.hitTestTask(world.x, world.y);
   if (task) return;
 
-  const dateAtClick = timeAxis.xToDate(world.x);
-  const dateStr = dateAtClick.toISOString().split('T')[0];
-
-  // Figure out which swimlane from renderer layout
-  const layout = renderer.swimlaneLayout;
-  let sl = layout[0];
-  for (const s of layout) {
-    if (world.y >= s.y && world.y < s.y + s.height) { sl = s; break; }
-  }
-  taskDialog.open(dateStr, sl?.id);
+  // Open add-task panel
+  rightPanel.setSwimlanes(project.data.swimlanes);
+  rightPanel.open('add-task');
+  updateFloatingBar();
 });
 
 // Touch events
@@ -231,62 +356,3 @@ canvasEl.addEventListener('touchmove', (e) => {
 }, { passive: false });
 
 canvasEl.addEventListener('touchend', () => { isPanning = false; });
-
-// --- UI Wiring ---
-toolbar.onProjectNameChange((name) => {
-  project.data.name = name;
-  project.data.updatedAt = new Date().toISOString();
-});
-
-toolbar.onZoomToFit(() => {
-  camera.x = todayX;
-  camera.y = 180;
-  camera.zoom = 1;
-  renderer.markDirty();
-});
-
-floatingBar.onAction = (action) => {
-  if (action === 'add-task') taskDialog.open();
-  else if (action === 'sidebar') { sidebar.open('add-task'); floatingBar.hide(); }
-  else if (action === 'zoom-to-fit') { camera.x = todayX; camera.y = 180; camera.zoom = 1; renderer.markDirty(); }
-  else if (action === 'settings') sidebar.open('trades');
-};
-
-sidebar.onAddTask = (data) => {
-  const task: TaskData = {
-    ...data,
-    id: uuid(),
-    color: getTradeColor(data.tradeId),
-    progress: 0,
-    dependencies: [],
-  };
-  project.addTask(task);
-};
-
-sidebar.onUpdateTask = (task) => {
-  task.color = getTradeColor(task.tradeId);
-  project.updateTask(task.id, task);
-};
-
-sidebar.onDeleteTask = (id) => {
-  project.removeTask(id);
-  renderer.selectedTaskId = null;
-  renderer.markDirty();
-};
-
-sidebar.onClose = () => {
-  floatingBar.show();
-  renderer.selectedTaskId = null;
-  renderer.markDirty();
-};
-
-taskDialog.onAddTask = (data) => {
-  const task: TaskData = {
-    ...data,
-    id: uuid(),
-    color: getTradeColor(data.tradeId),
-    progress: 0,
-    dependencies: [],
-  };
-  project.addTask(task);
-};
